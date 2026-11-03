@@ -1,18 +1,45 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:internship_monitor/main.dart';
+import 'package:internship_monitor/screens/workflow/workflow_overview_screen.dart';
+import 'package:internship_monitor/services/api_service.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    await tester.pumpWidget(const InternshipMonitorApp());
+  testWidgets('dashboard presents production copy and opens workflow', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    final service = ApiService(
+      client: MockClient((_) async => http.Response(jsonEncode([]), 200)),
+    );
 
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.pumpWidget(InternshipMonitorApp(apiService: service));
+    await tester.pumpAndSettle();
 
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Placement operations'), findsOneWidget);
+    expect(find.text('This week at a glance'), findsOneWidget);
+    expect(find.text('Counter'), findsNothing);
+    expect(
+      tester
+          .widget<MaterialApp>(find.byType(MaterialApp))
+          .debugShowCheckedModeBanner,
+      isFalse,
+    );
+
+    await tester.ensureVisible(find.text('Application workflow'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Application workflow'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(WorkflowOverviewScreen), findsOneWidget);
+    expect(find.text('No applications yet'), findsOneWidget);
   });
 }

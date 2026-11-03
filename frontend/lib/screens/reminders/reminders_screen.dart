@@ -45,7 +45,18 @@ class _RemindersScreenState extends State<RemindersScreen> {
               onRetry: () => provider.fetchReminders(),
             );
           }
-          if (provider.remindersState == DataLoadingState.empty || provider.reminders.isEmpty) {
+          if (provider.remindersState == DataLoadingState.businessFailure) {
+            return ui.BusinessRuleFailureState(
+              title: 'Reminders are unavailable for this account',
+              description: provider.remindersError,
+              interventionSteps: const [
+                'Ask the coordinator to review your account access.',
+                'Confirm that the application record is active.',
+              ],
+            );
+          }
+          if (provider.remindersState == DataLoadingState.empty ||
+              provider.reminders.isEmpty) {
             return const ui.EmptyState(
               icon: Icons.notifications_none,
               title: 'No reminders',
@@ -77,8 +88,12 @@ class _RemindersScreenState extends State<RemindersScreen> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: _getPriorityColor(reminder.priority).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(UIConstants.radiusSM),
+                              color: _getPriorityColor(
+                                reminder.priority,
+                              ).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(
+                                UIConstants.radiusSM,
+                              ),
                             ),
                             child: Text(
                               reminder.priority.toUpperCase(),
@@ -100,6 +115,31 @@ class _RemindersScreenState extends State<RemindersScreen> {
                       Text(
                         'Due: ${_formatDate(reminder.dueDate)}',
                         style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: UIConstants.spacingMD),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          onPressed: provider.isUpdatingRecord
+                              ? null
+                              : () async {
+                                  final completed = await provider
+                                      .completeMilestone(reminder.id);
+                                  if (!completed && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          provider.recordActionIsBusinessFailure
+                                              ? 'Coordinator review required: ${provider.recordActionError}'
+                                              : provider.recordActionError,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                          icon: const Icon(Icons.check, size: 18),
+                          label: const Text('Mark complete'),
+                        ),
                       ),
                     ],
                   ),

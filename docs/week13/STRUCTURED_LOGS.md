@@ -1,83 +1,53 @@
-﻿# Structured Logs - Week 13 Automation Foundation
+# Week 13 structured log examples
 
-## Log Format
-All logs use JSON structure with standard fields:
-- 	imestamp: ISO 8601 UTC
-- level: info|warn|error|critical
-- component: frontend|backend|api_service
-- event: event identifier
-- correlation_id: request trace ID
-- context: relevant data
-- duration_ms: operation duration
+The examples below are representative JSON records, not captured production telemetry. Laravel command events use structured context in the application log. Client-side retry events are mock evidence for the desired observability format; the Flutter client does not yet ship logs to a remote collector.
 
-## Example 1: Recovered Transient Failure (Auto-Retry Success)
+## Recovered transient failure
 
-`json
+```json
 {
-  \"timestamp\": \"2024-10-31T08:39:45.123Z\",
-  \"level\": \"warn\",
-  \"component\": \"api_service\",
-  \"event\": \"transient_network_error_recovered\",
-  \"correlation_id\": \"req_9f3a8b2c-4e5d-4a1b-9c7e-123456789abc\",
-  \"context\": {
-    \"endpoint\": \"/api/automation/reminders\",
-    \"method\": \"GET\",
-    \"attempt\": 3,
-    \"max_retries\": 5,
-    \"error_type\": \"TimeoutException\",
-    \"error_message\": \"Request timeout\",
-    \"backoff_ms\": 4000,
-    \"jitter_applied\": true
+  "timestamp": "2026-11-03T08:39:45.123Z",
+  "level": "info",
+  "component": "flutter_api_service",
+  "event": "request_recovered_after_retry",
+  "correlation_id": "req_4f79c9e8",
+  "context": {
+    "method": "GET",
+    "endpoint": "/api/automation/reminders",
+    "attempt": 2,
+    "max_retries": 3,
+    "previous_status": 503,
+    "backoff_ms": 417,
+    "outcome": "success",
+    "records_returned": 8
   },
-  \"duration_ms\": 8450,
-  \"outcome\": \"success\",
-  \"recovery\": {
-    \"strategy\": \"exponential_backoff_with_jitter\",
-    \"retries_used\": 2,
-    \"total_delay_ms\": 7000
-  }
+  "duration_ms": 691
 }
-`
+```
 
-**Explanation:** Request timed out on attempt 1, retried with exponential backoff (1s -> 2s -> 4s with jitter), succeeded on attempt 3. System recovered automatically without human intervention.
+The client retries 503 responses with a bounded exponential delay and jitter. It records no student details in this event.
 
-## Example 2: Permanent Failure Routed to Human
+## Permanent business-rule failure routed to a person
 
-`json
+```json
 {
-  \"timestamp\": \"2024-10-31T09:12:33.456Z\",
-  \"level\": \"error\",
-  \"component\": \"api_service\",
-  \"event\": \"permanent_business_rule_failure\",
-  \"correlation_id\": \"req_7b2e9a1d-6c8f-4b3a-8e2d-987654321fed\",
-  \"context\": {
-    \"endpoint\": \"/api/automation/escalations\",
-    \"method\": \"GET\",
-    \"attempt\": 1,
-    \"error_type\": \"BusinessRuleException\",
-    \"error_code\": \"BUSINESS_VALIDATION_422\",
-    \"error_message\": \"Business validation failed\",
-    \"details\": \"Application workflow state invalid for escalation query\",
-    \"status_code\": 422
+  "timestamp": "2026-11-03T09:12:33.456Z",
+  "level": "warning",
+  "component": "laravel_api",
+  "event": "workflow.transition_rejected",
+  "correlation_id": "req_1ad80d32",
+  "context": {
+    "method": "PATCH",
+    "endpoint": "/api/applications/31/workflow",
+    "status_code": 422,
+    "error_code": "workflow_requirements_incomplete",
+    "requested_stage": "endorsement",
+    "human_action_required": true,
+    "routing_target": "coordinator_review",
+    "retryable": false
   },
-  \"duration_ms\": 245,
-  \"outcome\": \"failure_routed_to_human\",
-  \"human_intervention_required\": true,
-  \"routing\": {
-    \"target\": \"coordinator_dashboard\",
-    \"priority\": \"high\",
-    \"intervention_steps\": [
-      \"Review validation errors and correct the data\",
-      \"Ensure all workflow prerequisites are met\",
-      \"Contact the appropriate party for required information\"
-    ],
-    \"ui_state\": \"business_rule_failure\"
-  },
-  \"alert\": {
-    \"notify\": [\"coordinator\", \"system_admin\"],
-    \"escalate\": true
-  }
+  "outcome": "shown_in_coordinator_workflow_ui"
 }
-`
+```
 
-**Explanation:** Business rule violation (422) detected. Not retryable - classified as permanent failure. Routed to coordinator dashboard with explicit intervention steps. Human action required.
+The example represents a rejected transition because required records remain incomplete. The API response is shown in a permanent failure state with coordinator review steps. No external notification is implied.

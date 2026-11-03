@@ -1,192 +1,242 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+
 import 'package:http/http.dart' as http;
+
 import '../core/constants/api_constants.dart';
-import '../models/reminder_model.dart';
-import '../models/incomplete_record_model.dart';
+import '../models/application_model.dart';
 import '../models/escalation_model.dart';
+import '../models/incomplete_record_model.dart';
+import '../models/reminder_model.dart';
 import '../models/weekly_summary_model.dart';
 
-/// API Service with retry and recovery policy
 class ApiService {
-  static final ApiService _instance = ApiService._internal();
-  factory ApiService() => _instance;
-  ApiService._internal();
+  ApiService({http.Client? client}) : _client = client ?? http.Client();
 
-  final http.Client _client = http.Client();
+  final http.Client _client;
   final Random _random = Random();
-
-  // Track connection state for recovery
   bool _isConnected = true;
-  DateTime? _lastFailureTime;
 
   bool get isConnected => _isConnected;
 
-  /// Execute request with exponential backoff retry and recovery
-  Future<T> _executeWithRetry<T>(
-    Future<T> Function() request,
-  ) async {
-    int attempt = 0;
-    Duration delay = ApiConstants.initialRetryDelay;
+  Future<List<ApplicationModel>> getApplications() async {
+    final data = await _getList('/applications');
+    return data.map(ApplicationModel.fromJson).toList();
+  }
 
-    while (attempt <= ApiConstants.maxRetries) {
-      try {
-        final result = await request().timeout(ApiConstants.connectionTimeout);
+  Future<void> updateWorkflow(
+    String applicationId, {
+    required String stage,
+    String? interviewStatus,
+  }) async {
+    final body = <String, String>{'stage': stage};
+    if (interviewStatus != null) {
+      body['interview_status'] = interviewStatus;
+    }
+
+    await _patch('/applications/$applicationId/workflow', body);
+  }
+
+  Future<void> completeMilestone(String milestoneId) =>
+      _patch('/milestones/$milestoneId/complete');
+
+  Future<void> resolveIncompleteRecord(String recordId) =>
+      _patch('/incomplete-records/$recordId/resolve');
+
+  Future<void> _patch(
+    String endpoint, [
+    Map<String, String> body = const {},
+  ]) async {
+    try {
+      final response = await _client
+          .patch(
+            Uri.parse('${ApiConstants.baseUrl}$endpoint'),
+            headers: const {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(ApiConstants.receiveTimeout);
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
         _isConnected = true;
-        _lastFailureTime = null;
-        return result;
-      } catch (e) {
-        attempt++;
-        _isConnected = false;
-        _lastFailureTime = DateTime.now();
+        throw _exceptionForResponse(response);
+      }
+      _isConnected = true;
+    } on TimeoutException {
+      _isConnected = false;
+      throw const ApiException(
+        'The server did not respond. Check the application status before trying again.',
+        isNetworkError: true,
+        isRecoverable: true,
+      );
+    } on http.ClientException {
+      _isConnected = false;
+      throw const ApiException(
+        'Unable to reach the server. Check your connection and try again.',
+        isNetworkError: true,
+        isRecoverable: true,
+      );
+    }
+  }
 
-        if (attempt > ApiConstants.maxRetries) {
-          throw ApiException(
-            'Request failed after ${ApiConstants.maxRetries} retries: $e',
-            isNetworkError: _isNetworkError(e),
-            isRecoverable: _isRecoverableError(e),
-          );
+  Future<List<ReminderModel>> getReminders() async {
+    final data = await _getList(ApiConstants.reminders);
+    return data.map(ReminderModel.fromJson).toList();
+  }
+
+  Future<List<IncompleteRecordModel>> getIncompleteRecords() async {
+    final data = await _getList(ApiConstants.incompleteRecords);
+    return data.map(IncompleteRecordModel.fromJson).toList();
+  }
+
+  Future<List<EscalationModel>> getEscalations() async {
+    final data = await _getList(ApiConstants.escalations);
+    return data.map(EscalationModel.fromJson).toList();
+  }
+
+  Future<List<WeeklySummaryModel>> getWeeklySummaries() async {
+    final data = await _getList(ApiConstants.weeklySummaries);
+    return data.map(WeeklySummaryModel.fromJson).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _getList(String endpoint) async {
+    final response = await _get(endpoint);
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) {
+      throw const ApiException('The server returned an unexpected response.');
+    }
+
+    return decoded.map((item) {
+      if (item is! Map<String, dynamic>) {
+        throw const ApiException('The server returned an invalid record.');
+      }
+      return item;
+    }).toList();
+  }
+
+  Future<http.Response> _get(String endpoint) async {
+    var retries = 0;
+    var delay = ApiConstants.initialRetryDelay;
+
+    while (true) {
+      try {
+        final response = await _client
+            .get(
+              Uri.parse('${ApiConstants.baseUrl}$endpoint'),
+              headers: const {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+            )
+            .timeout(ApiConstants.receiveTimeout);
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          _isConnected = true;
+          return response;
         }
 
-        // Add jitter to avoid thundering herd
-        final jitter = Duration(milliseconds: _random.nextInt(500));
-        await Future.delayed(delay + jitter);
-        delay = Duration(
-          milliseconds: min(
-            (delay.inMilliseconds * ApiConstants.retryMultiplier).round(),
-            ApiConstants.maxRetryDelay.inMilliseconds,
-          ),
-        );
+        if (_isRetryableStatus(response.statusCode) &&
+            retries < ApiConstants.maxRetries) {
+          retries++;
+          await _waitWithJitter(delay);
+          delay = _nextDelay(delay);
+          continue;
+        }
+
+        _isConnected = true;
+        throw _exceptionForResponse(response);
+      } on TimeoutException {
+        _isConnected = false;
+        if (retries >= ApiConstants.maxRetries) {
+          throw ApiException(
+            'The server did not respond after ${retries + 1} attempts.',
+            isNetworkError: true,
+            isRecoverable: true,
+          );
+        }
+        retries++;
+        await _waitWithJitter(delay);
+        delay = _nextDelay(delay);
+      } on http.ClientException {
+        _isConnected = false;
+        if (retries >= ApiConstants.maxRetries) {
+          throw ApiException(
+            'Unable to reach the server after ${retries + 1} attempts.',
+            isNetworkError: true,
+            isRecoverable: true,
+          );
+        }
+        retries++;
+        await _waitWithJitter(delay);
+        delay = _nextDelay(delay);
       }
     }
-    throw ApiException('Unexpected error in retry logic');
   }
 
-  bool _isNetworkError(dynamic error) {
-    return error.toString().contains('SocketException') ||
-        error.toString().contains('TimeoutException') ||
-        error.toString().contains('Connection');
-  }
-
-  bool _isRecoverableError(dynamic error) {
-    final errorStr = error.toString().toLowerCase();
-    return errorStr.contains('timeout') ||
-        errorStr.contains('connection') ||
-        errorStr.contains('503') ||
-        errorStr.contains('502') ||
-        errorStr.contains('504');
-  }
-
-  // Fetch Milestone Reminders
-  Future<List<ReminderModel>> getReminders() async {
-    return _executeWithRetry(() async {
-      final response = await _client.get(
-        Uri.parse('${ApiConstants.baseUrl}${ApiConstants.reminders}'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(ApiConstants.receiveTimeout);
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => ReminderModel.fromJson(json)).toList();
-      } else if (response.statusCode >= 500) {
-        throw ServerException('Server error: ${response.statusCode}');
-      } else {
-        throw ApiException('Failed to fetch reminders: ${response.statusCode}');
-      }
-    });
-  }
-
-  // Fetch Incomplete Records
-  Future<List<IncompleteRecordModel>> getIncompleteRecords() async {
-    return _executeWithRetry(() async {
-      final response = await _client.get(
-        Uri.parse('${ApiConstants.baseUrl}${ApiConstants.incompleteRecords}'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(ApiConstants.receiveTimeout);
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => IncompleteRecordModel.fromJson(json)).toList();
-      } else if (response.statusCode >= 500) {
-        throw ServerException('Server error: ${response.statusCode}');
-      } else {
-        throw ApiException('Failed to fetch incomplete records: ${response.statusCode}');
-      }
-    });
-  }
-
-  // Fetch Stalled Application Escalations
-  Future<List<EscalationModel>> getEscalations() async {
-    return _executeWithRetry(() async {
-      final response = await _client.get(
-        Uri.parse('${ApiConstants.baseUrl}${ApiConstants.escalations}'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(ApiConstants.receiveTimeout);
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => EscalationModel.fromJson(json)).toList();
-      } else if (response.statusCode >= 500) {
-        throw ServerException('Server error: ${response.statusCode}');
-      } else {
-        throw ApiException('Failed to fetch escalations: ${response.statusCode}');
-      }
-    });
-  }
-
-  // Fetch Weekly Placement Summaries
-  Future<List<WeeklySummaryModel>> getWeeklySummaries() async {
-    return _executeWithRetry(() async {
-      final response = await _client.get(
-        Uri.parse('${ApiConstants.baseUrl}${ApiConstants.weeklySummaries}'),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(ApiConstants.receiveTimeout);
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => WeeklySummaryModel.fromJson(json)).toList();
-      } else if (response.statusCode >= 500) {
-        throw ServerException('Server error: ${response.statusCode}');
-      } else {
-        throw ApiException('Failed to fetch weekly summaries: ${response.statusCode}');
-      }
-    });
-  }
-
-  // Test connection for recovery
-  Future<bool> testConnection() async {
+  ApiException _exceptionForResponse(http.Response response) {
+    var message = 'The request could not be completed.';
     try {
-      await _executeWithRetry(() async {
-        final response = await _client.get(
-          Uri.parse('${ApiConstants.baseUrl}/health'),
-          headers: {'Content-Type': 'application/json'},
-        ).timeout(ApiConstants.connectionTimeout);
-        return response.statusCode == 200;
-      });
-      return true;
-    } catch (e) {
-      return false;
+      final body = jsonDecode(response.body);
+      if (body is Map<String, dynamic> && body['message'] is String) {
+        message = body['message'] as String;
+      } else if (body is Map<String, dynamic> && body['error'] is String) {
+        message = body['error'] as String;
+      }
+    } on FormatException {
+      message = 'The server returned an error (${response.statusCode}).';
     }
+
+    return ApiException(
+      message,
+      statusCode: response.statusCode,
+      isBusinessRuleFailure: _isBusinessFailureStatus(response.statusCode),
+      isRecoverable: _isRetryableStatus(response.statusCode),
+    );
   }
 
-  void dispose() {
-    _client.close();
+  bool _isRetryableStatus(int statusCode) =>
+      statusCode == 408 || statusCode == 429 || statusCode >= 500;
+
+  bool _isBusinessFailureStatus(int statusCode) =>
+      statusCode >= 400 &&
+      statusCode < 500 &&
+      statusCode != 408 &&
+      statusCode != 429;
+
+  Future<void> _waitWithJitter(Duration delay) async {
+    final jitter = _random.nextInt(500);
+    await Future<void>.delayed(delay + Duration(milliseconds: jitter));
   }
+
+  Duration _nextDelay(Duration current) {
+    final nextMilliseconds = min(
+      (current.inMilliseconds * ApiConstants.retryMultiplier).round(),
+      ApiConstants.maxRetryDelay.inMilliseconds,
+    );
+    return Duration(milliseconds: nextMilliseconds);
+  }
+
+  void dispose() => _client.close();
 }
 
-/// Custom exceptions for API errors
 class ApiException implements Exception {
+  const ApiException(
+    this.message, {
+    this.statusCode,
+    this.isNetworkError = false,
+    this.isRecoverable = false,
+    this.isBusinessRuleFailure = false,
+  });
+
   final String message;
+  final int? statusCode;
   final bool isNetworkError;
   final bool isRecoverable;
-
-  ApiException(this.message, {this.isNetworkError = false, this.isRecoverable = false});
+  final bool isBusinessRuleFailure;
 
   @override
   String toString() => message;
-}
-
-class ServerException extends ApiException {
-  ServerException(String message) : super(message, isNetworkError: false, isRecoverable: true);
 }

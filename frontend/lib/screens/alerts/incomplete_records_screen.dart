@@ -9,7 +9,8 @@ class IncompleteRecordsScreen extends StatefulWidget {
   const IncompleteRecordsScreen({super.key});
 
   @override
-  State<IncompleteRecordsScreen> createState() => _IncompleteRecordsScreenState();
+  State<IncompleteRecordsScreen> createState() =>
+      _IncompleteRecordsScreenState();
 }
 
 class _IncompleteRecordsScreenState extends State<IncompleteRecordsScreen> {
@@ -30,7 +31,8 @@ class _IncompleteRecordsScreenState extends State<IncompleteRecordsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => context.read<DashboardProvider>().fetchIncompleteRecords(),
+            onPressed: () =>
+                context.read<DashboardProvider>().fetchIncompleteRecords(),
           ),
         ],
       ),
@@ -45,7 +47,19 @@ class _IncompleteRecordsScreenState extends State<IncompleteRecordsScreen> {
               onRetry: () => provider.fetchIncompleteRecords(),
             );
           }
-          if (provider.incompleteRecordsState == DataLoadingState.empty || provider.incompleteRecords.isEmpty) {
+          if (provider.incompleteRecordsState ==
+              DataLoadingState.businessFailure) {
+            return ui.BusinessRuleFailureState(
+              title: 'Record alerts require coordinator review',
+              description: provider.incompleteRecordsError,
+              interventionSteps: const [
+                'Ask the coordinator to review the application permissions.',
+                'Resolve any validation issues before refreshing this view.',
+              ],
+            );
+          }
+          if (provider.incompleteRecordsState == DataLoadingState.empty ||
+              provider.incompleteRecords.isEmpty) {
             return ui.EmptyState(
               icon: Icons.check_circle_outline,
               title: 'All records complete',
@@ -77,8 +91,10 @@ class _IncompleteRecordsScreenState extends State<IncompleteRecordsScreen> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: UIConstants.error.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(UIConstants.radiusSM),
+                              color: UIConstants.error.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(
+                                UIConstants.radiusSM,
+                              ),
                             ),
                             child: Text(
                               record.severity.toUpperCase(),
@@ -100,6 +116,31 @@ class _IncompleteRecordsScreenState extends State<IncompleteRecordsScreen> {
                       Text(
                         '${record.daysIncomplete} days incomplete',
                         style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: UIConstants.spacingMD),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          onPressed: provider.isUpdatingRecord
+                              ? null
+                              : () async {
+                                  final resolved = await provider
+                                      .resolveIncompleteRecord(record.id);
+                                  if (!resolved && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          provider.recordActionIsBusinessFailure
+                                              ? 'Coordinator review required: ${provider.recordActionError}'
+                                              : provider.recordActionError,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
+                          icon: const Icon(Icons.check, size: 18),
+                          label: const Text('Mark resolved'),
+                        ),
                       ),
                     ],
                   ),

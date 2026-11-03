@@ -12,8 +12,20 @@ return new class extends Migration
             $table->id();
             $table->foreignId('student_id')->constrained('users')->onDelete('cascade');
             $table->string('application_number')->unique();
-            $table->enum('status', ['application', 'verification', 'endorsement', 'submission', 'status', 'confirmation'])->default('application');
+            $table->enum('status', [
+                'application',
+                'verification',
+                'endorsement',
+                'partner_submission',
+                'interview',
+                'placement_confirmation',
+            ])->default('application');
             $table->enum('workflow_state', ['pending', 'in_progress', 'approved', 'rejected', 'stalled'])->default('pending');
+            $table->enum('interview_status', ['not_scheduled', 'scheduled', 'completed', 'offer_received', 'declined'])
+                ->default('not_scheduled');
+            $table->timestamp('interview_scheduled_at')->nullable();
+            $table->timestamp('offer_received_at')->nullable();
+            $table->timestamp('rejected_at')->nullable();
             $table->string('company_name')->nullable();
             $table->string('position')->nullable();
             $table->date('start_date')->nullable();

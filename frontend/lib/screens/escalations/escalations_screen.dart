@@ -30,7 +30,8 @@ class _EscalationsScreenState extends State<EscalationsScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => context.read<DashboardProvider>().fetchEscalations(),
+            onPressed: () =>
+                context.read<DashboardProvider>().fetchEscalations(),
           ),
         ],
       ),
@@ -45,7 +46,18 @@ class _EscalationsScreenState extends State<EscalationsScreen> {
               onRetry: () => provider.fetchEscalations(),
             );
           }
-          if (provider.escalationsState == DataLoadingState.empty || provider.escalations.isEmpty) {
+          if (provider.escalationsState == DataLoadingState.businessFailure) {
+            return ui.BusinessRuleFailureState(
+              title: 'Escalations need a coordinator review',
+              description: provider.escalationsError,
+              interventionSteps: const [
+                'Ask a coordinator to review the application workflow state.',
+                'Correct the recorded data before requesting this list again.',
+              ],
+            );
+          }
+          if (provider.escalationsState == DataLoadingState.empty ||
+              provider.escalations.isEmpty) {
             return ui.EmptyState(
               icon: Icons.check_circle_outline,
               title: 'No escalations',
@@ -77,8 +89,10 @@ class _EscalationsScreenState extends State<EscalationsScreen> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: UIConstants.error.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(UIConstants.radiusSM),
+                              color: UIConstants.error.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(
+                                UIConstants.radiusSM,
+                              ),
                             ),
                             child: Text(
                               escalation.escalationLevel.toUpperCase(),
@@ -98,7 +112,7 @@ class _EscalationsScreenState extends State<EscalationsScreen> {
                       ),
                       const SizedBox(height: UIConstants.spacingSM),
                       Text(
-                        '${escalation.daysStalled} days stalled • Assigned: ${escalation.assignedTo}',
+                        '${escalation.daysStalled} days stalled ï¿½ Assigned: ${escalation.assignedTo}',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ],

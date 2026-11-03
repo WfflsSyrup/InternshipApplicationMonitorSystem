@@ -19,6 +19,7 @@ return [
         'driver' => 'file',
     ],
     'providers' => ServiceProvider::defaultProviders()->merge([
+        App\Providers\RouteServiceProvider::class,
     ])->toArray(),
     'aliases' => Facade::defaultAliases()->merge([
     ])->toArray(),

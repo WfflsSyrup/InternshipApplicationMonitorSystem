@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('weekly_summaries', function (Blueprint $table) {
             $table->id();
             $table->string('week_label');
-            $table->date('week_start');
+            $table->date('week_start')->unique();
             $table->date('week_end');
             $table->integer('total_applications')->default(0);
             $table->integer('applications_submitted')->default(0);

@@ -30,7 +30,8 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => context.read<DashboardProvider>().fetchWeeklySummaries(),
+            onPressed: () =>
+                context.read<DashboardProvider>().fetchWeeklySummaries(),
           ),
         ],
       ),
@@ -45,7 +46,19 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
               onRetry: () => provider.fetchWeeklySummaries(),
             );
           }
-          if (provider.weeklySummariesState == DataLoadingState.empty || provider.weeklySummaries.isEmpty) {
+          if (provider.weeklySummariesState ==
+              DataLoadingState.businessFailure) {
+            return ui.BusinessRuleFailureState(
+              title: 'Summary access requires coordinator review',
+              description: provider.weeklySummariesError,
+              interventionSteps: const [
+                'Ask the coordinator to review access to placement reports.',
+                'Refresh this view after the issue is resolved.',
+              ],
+            );
+          }
+          if (provider.weeklySummariesState == DataLoadingState.empty ||
+              provider.weeklySummaries.isEmpty) {
             return const ui.EmptyState(
               icon: Icons.bar_chart,
               title: 'No summaries available',
@@ -61,22 +74,35 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
                 padding: const EdgeInsets.only(bottom: UIConstants.spacingMD),
                 child: CleanCard(
                   title: summary.weekLabel,
-                  subtitle: '${_formatDate(summary.weekStart)} - ${_formatDate(summary.weekEnd)}',
+                  subtitle:
+                      '${_formatDate(summary.weekStart)} - ${_formatDate(summary.weekEnd)}',
                   child: Column(
                     children: [
                       Row(
                         children: [
                           Expanded(
-                            child: _buildMetric('Total', summary.totalApplications.toString()),
+                            child: _buildMetric(
+                              'Total',
+                              summary.totalApplications.toString(),
+                            ),
                           ),
                           Expanded(
-                            child: _buildMetric('Interviews', summary.interviewsScheduled.toString()),
+                            child: _buildMetric(
+                              'Interviews',
+                              summary.interviewsScheduled.toString(),
+                            ),
                           ),
                           Expanded(
-                            child: _buildMetric('Offers', summary.offersReceived.toString()),
+                            child: _buildMetric(
+                              'Offers',
+                              summary.offersReceived.toString(),
+                            ),
                           ),
                           Expanded(
-                            child: _buildMetric('Placed', summary.placementsConfirmed.toString()),
+                            child: _buildMetric(
+                              'Placed',
+                              summary.placementsConfirmed.toString(),
+                            ),
                           ),
                         ],
                       ),
@@ -84,13 +110,18 @@ class _WeeklySummaryScreenState extends State<WeeklySummaryScreen> {
                       Container(
                         padding: const EdgeInsets.all(UIConstants.spacingMD),
                         decoration: BoxDecoration(
-                          color: UIConstants.success.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(UIConstants.radiusMD),
+                          color: UIConstants.success.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(
+                            UIConstants.radiusMD,
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.trending_up, color: UIConstants.success),
+                            const Icon(
+                              Icons.trending_up,
+                              color: UIConstants.success,
+                            ),
                             const SizedBox(width: UIConstants.spacingSM),
                             Text(
                               'Placement Rate: ${summary.placementRate.toStringAsFixed(1)}%',

@@ -5,10 +5,7 @@ import '../../core/constants/ui_constants.dart';
 class LoadingState extends StatelessWidget {
   final String message;
 
-  const LoadingState({
-    super.key,
-    this.message = 'Loading...',
-  });
+  const LoadingState({super.key, this.message = 'Loading...'});
 
   @override
   Widget build(BuildContext context) {
@@ -27,9 +24,9 @@ class LoadingState extends StatelessWidget {
           const SizedBox(height: UIConstants.spacingMD),
           Text(
             message,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: UIConstants.textSecondary,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: UIConstants.textSecondary),
           ),
         ],
       ),
@@ -55,16 +52,13 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(UIConstants.spacing2XL),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 48,
-              color: UIConstants.textTertiary,
-            ),
+            Icon(icon, size: 48, color: UIConstants.textTertiary),
             const SizedBox(height: UIConstants.spacingMD),
             Text(
               title,
@@ -115,11 +109,7 @@ class TransientErrorState extends StatelessWidget {
                 color: UIConstants.warning.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.wifi_off,
-                size: 32,
-                color: UIConstants.warning,
-              ),
+              child: Icon(Icons.wifi_off, size: 32, color: UIConstants.warning),
             ),
             const SizedBox(height: UIConstants.spacingMD),
             Text(
@@ -149,7 +139,7 @@ class TransientErrorState extends StatelessWidget {
             ),
             const SizedBox(height: UIConstants.spacingSM),
             Text(
-              'Will auto-retry with exponential backoff',
+              'Automatic retries are complete. Retry again when you are ready.',
               style: Theme.of(context).textTheme.labelSmall,
             ),
           ],
@@ -186,7 +176,10 @@ class BusinessRuleFailureState extends StatelessWidget {
           padding: const EdgeInsets.all(UIConstants.spacingXL),
           decoration: BoxDecoration(
             color: UIConstants.surface,
-            border: Border.all(color: UIConstants.error.withOpacity(0.5), width: 1.5),
+            border: Border.all(
+              color: UIConstants.error.withOpacity(0.5),
+              width: 1.5,
+            ),
             borderRadius: BorderRadius.circular(UIConstants.radiusLG),
           ),
           child: Column(
@@ -219,9 +212,8 @@ class BusinessRuleFailureState extends StatelessWidget {
                         const SizedBox(height: UIConstants.spacingXS),
                         Text(
                           'Business rule violation',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: UIConstants.error,
-                              ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: UIConstants.error),
                         ),
                       ],
                     ),
@@ -229,16 +221,13 @@ class BusinessRuleFailureState extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: UIConstants.spacingLG),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: UIConstants.spacingSM),
               Text(
                 description,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: UIConstants.textSecondary,
-                    ),
+                  color: UIConstants.textSecondary,
+                ),
               ),
               const SizedBox(height: UIConstants.spacingLG),
               Text(

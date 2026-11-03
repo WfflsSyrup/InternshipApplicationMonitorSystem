@@ -1,144 +1,163 @@
-﻿# API Contract - Internship Application Monitor (Week 13)
+# Week 13 API contract
 
-## Base URL
-`
-http://localhost:8000/api
-`
+Base URL for local development: `http://localhost:8000/api`
 
-## Automation Endpoints
+All responses use JSON. List endpoints return a JSON array, including when there are no records (`[]`). IDs are integers. Dates use `YYYY-MM-DD`; timestamps use ISO 8601.
 
-### 1. GET /automation/reminders
-Retrieves milestone reminders for upcoming deadlines.
+## Automation and workflow endpoints
 
-**Request:**
-- Method: GET
-- Headers: Content-Type: application/json
-- Auth: Not required (Week 13 scope)
-- Query Params: None
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/health` | Local API health check |
+| GET | `/automation/reminders` | Up to 100 incomplete milestones due within 14 days or overdue |
+| GET | `/automation/incomplete-records` | Up to 100 unresolved record alerts |
+| GET | `/automation/escalations` | Up to 100 open/in-progress stalled-application escalations |
+| GET | `/automation/weekly-summary` | Up to four most recent weekly placement summaries |
+| GET | `/applications` | Up to 100 most recently updated application workflow records |
+| PATCH | `/applications/{id}/workflow` | Advance one workflow stage or update interview status |
+| PATCH | `/milestones/{id}/complete` | Mark a requirement milestone complete |
+| PATCH | `/incomplete-records/{id}/resolve` | Resolve an incomplete-record alert |
 
-**Response (200 OK):**
-`json
+### Automation response examples
+
+`GET /automation/reminders`:
+
+```json
 [
   {
-    \"id\": 1,
-    \"student_name\": \"John Doe\",
-    \"student_id\": \"STU-2024-001\",
-    \"reminder_type\": \"document_submission\",
-    \"message\": \"Resume Submission: Submit updated resume\",
-    \"due_date\": \"2024-10-15\",
-    \"is_completed\": false,
-    \"priority\": \"high\"
+    "id": 18,
+    "student_name": "Avery Chen",
+    "student_id": "STU-24018",
+    "reminder_type": "requirement",
+    "message": "Endorsement letter: Upload the signed adviser letter.",
+    "due_date": "2026-11-06",
+    "is_completed": false,
+    "priority": "high"
   }
 ]
-`
+```
 
-**Status Codes:**
-- 200 OK - Success
-- 500 Internal Server Error - Database/query failure
+`GET /automation/incomplete-records`:
 
----
-
-### 2. GET /automation/incomplete-records
-Retrieves alerts for incomplete application records.
-
-**Request:**
-- Method: GET
-- Headers: Content-Type: application/json
-
-**Response (200 OK):**
-`json
+```json
 [
   {
-    \"id\": 1,
-    \"student_name\": \"Jane Smith\",
-    \"student_id\": \"STU-2024-002\",
-    \"missing_field\": \"endorsement_letter\",
-    \"record_type\": \"application\",
-    \"severity\": \"critical\",
-    \"days_incomplete\": 7,
-    \"last_updated\": \"2024-10-08\"
+    "id": 7,
+    "student_name": "Avery Chen",
+    "student_id": "STU-24018",
+    "missing_field": "endorsement_letter",
+    "record_type": "application",
+    "severity": "high",
+    "days_incomplete": 3,
+    "last_updated": "2026-11-01"
   }
 ]
-`
+```
 
-**Status Codes:**
-- 200 OK - Success
-- 500 Internal Server Error - Database/query failure
+`GET /automation/escalations`:
 
----
-
-### 3. GET /automation/escalations
-Retrieves stalled application escalations requiring action.
-
-**Request:**
-- Method: GET
-- Headers: Content-Type: application/json
-
-**Response (200 OK):**
-`json
+```json
 [
   {
-    \"id\": 1,
-    \"student_name\": \"Mike Johnson\",
-    \"student_id\": \"STU-2024-003\",
-    \"application_id\": 10,
-    \"escalation_reason\": \"No response from partner for 14 days\",
-    \"escalation_level\": 3,
-    \"status\": \"open\",
-    \"assigned_to\": \"Coordinator Sarah\",
-    \"days_stalled\": 14,
-    \"escalated_at\": \"2024-09-27\"
+    "id": 4,
+    "student_name": "Jordan Lee",
+    "student_id": "STU-24027",
+    "application_id": 31,
+    "escalation_reason": "No workflow activity for 14 days.",
+    "escalation_level": "medium",
+    "status": "open",
+    "assigned_to": "Unassigned",
+    "days_stalled": 14,
+    "escalated_at": "2026-11-03"
   }
 ]
-`
+```
 
-**Status Codes:**
-- 200 OK - Success
-- 500 Internal Server Error - Database/query failure
+`GET /automation/weekly-summary`:
 
----
-
-### 4. GET /automation/weekly-summary
-Retrieves weekly placement statistics.
-
-**Request:**
-- Method: GET
-- Headers: Content-Type: application/json
-
-**Response (200 OK):**
-`json
+```json
 [
   {
-    \"id\": 1,
-    \"week_label\": \"Week 42 - Oct 2024\",
-    \"week_start\": \"2024-10-14\",
-    \"week_end\": \"2024-10-20\",
-    \"total_applications\": 45,
-    \"applications_submitted\": 38,
-    \"applications_reviewed\": 35,
-    \"interviews_scheduled\": 22,
-    \"offers_received\": 15,
-    \"placements_confirmed\": 12,
-    \"rejected\": 8,
-    \"pending_review\": 10,
-    \"placement_rate\": 26.67
+    "id": 2,
+    "week_label": "Week 44, 2026",
+    "week_start": "2026-10-26",
+    "week_end": "2026-11-01",
+    "total_applications": 45,
+    "applications_submitted": 38,
+    "applications_reviewed": 35,
+    "interviews_scheduled": 22,
+    "offers_received": 15,
+    "placements_confirmed": 12,
+    "rejected": 8,
+    "pending_review": 10,
+    "placement_rate": 26.67
   }
 ]
-`
+```
 
-**Status Codes:**
-- 200 OK - Success
-- 500 Internal Server Error - Database/query failure
+`GET /applications` returns `id`, `application_number`, `student_name`, `student_id`, `company_name`, `position`, `stage`, `workflow_state`, `interview_status`, and `updated_at`.
 
-## Error Response Format
-`json
+### Workflow updates
+
+Request:
+
+```json
 {
-  \"error\": \"Failed to fetch reminders\"
+  "stage": "endorsement"
 }
-`
+```
 
-## Notes
-- All timestamps are in ISO 8601 format (Y-m-d)
-- Automation endpoints are read-only in Week 13 scope
-- Business logic calculations performed server-side
-- Client must handle all response states
+Allowed stages, in order: `application`, `verification`, `endorsement`, `partner_submission`, `interview`, `placement_confirmation`.
+
+At the `interview` stage, update the outcome without advancing:
+
+```json
+{
+  "stage": "interview",
+  "interview_status": "offer_received"
+}
+```
+
+Interview statuses are `not_scheduled`, `scheduled`, `completed`, `offer_received`, and `declined`. Stages can advance only one step at a time. Moving from verification to endorsement requires all linked requirement milestones completed and incomplete-record alerts resolved. Placement confirmation requires `offer_received`. A declined interview marks the application rejected. Successful updates return HTTP 200 with a `data` object containing the current `stage`, `workflow_state`, and `interview_status`.
+
+The workflow update returns:
+
+```json
+{
+  "data": {
+    "id": 31,
+    "stage": "endorsement",
+    "workflow_state": "in_progress",
+    "interview_status": "not_scheduled",
+    "updated_at": "2026-11-03T09:12:33+00:00"
+  },
+  "message": "Application workflow updated."
+}
+```
+
+`PATCH /milestones/{id}/complete` and `PATCH /incomplete-records/{id}/resolve` accept an empty JSON object and return HTTP 200 with the record `id`, its updated boolean (`is_completed` or `resolved`), its corresponding timestamp, and a message. Repeating either request is safe and preserves the original completion timestamp.
+
+### Status codes and error shape
+
+| Status | Meaning | Client behavior |
+|---|---|---|
+| 200 | Request completed; empty lists are valid | Render returned data |
+| 404 | Application, milestone, or record does not exist | Show a permanent record/access failure |
+| 422 | Invalid payload or workflow/business rule violation | Do not retry; direct the user to coordinator review |
+| 429 | Rate limit reached | Retry with bounded backoff |
+| 500-599 | Temporary server failure | Retry with bounded backoff, then offer manual retry |
+
+Laravel validation errors use:
+
+```json
+{
+  "message": "Resolve all missing records and required documents before endorsement.",
+  "errors": {
+    "stage": [
+      "Resolve all missing records and required documents before endorsement."
+    ]
+  }
+}
+```
+
+All API routes are currently intended for a local Week 13 development environment and are not authenticated. Do not expose this API or real student data outside that environment until authentication and role-based authorization are added.

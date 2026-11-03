@@ -9,7 +9,13 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule): void
     {
-        //
+        $schedule->command('automation:generate-weekly-summary')
+            ->weeklyOn(1, '01:00')
+            ->withoutOverlapping();
+
+        $schedule->command('automation:escalate-stalled-applications')
+            ->dailyAt('08:00')
+            ->withoutOverlapping();
     }
 
     protected function commands(): void

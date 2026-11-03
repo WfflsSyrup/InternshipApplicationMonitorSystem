@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/constants/app_colors.dart';
 import '../providers/dashboard_provider.dart';
+import 'ui/state_widgets.dart' as ui;
 
 class LoadingStateWidget extends StatelessWidget {
   final DataLoadingState state;
@@ -85,7 +86,9 @@ class LoadingStateWidget extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  errorMessage.isNotEmpty ? errorMessage : 'Failed to load data',
+                  errorMessage.isNotEmpty
+                      ? errorMessage
+                      : 'Failed to load data',
                   style: TextStyle(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -104,12 +107,26 @@ class LoadingStateWidget extends StatelessWidget {
           ),
         );
 
+      case DataLoadingState.businessFailure:
+        return ui.BusinessRuleFailureState(
+          title: 'This request needs coordinator review',
+          description: errorMessage,
+          interventionSteps: const [
+            'Confirm your access and the current application status.',
+            'Ask the coordinator to correct any workflow or record issues.',
+          ],
+        );
+
       case DataLoadingState.empty:
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.inbox_outlined, color: AppColors.textTertiary, size: 64),
+              Icon(
+                Icons.inbox_outlined,
+                color: AppColors.textTertiary,
+                size: 64,
+              ),
               const SizedBox(height: 16),
               Text(
                 emptyMessage?.toUpperCase() ?? 'NO DATA AVAILABLE',

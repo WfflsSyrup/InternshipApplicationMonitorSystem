@@ -1,151 +1,91 @@
-﻿# Internship Application Monitor - Setup & Run Instructions
+# Internship Application Monitor: local setup
+
+Workspace layout:
+
+- `frontend/`: Flutter Web client
+- `backend/`: Laravel API
+- `docs/week13/`: Week 13 boundary map, API contract, logs, and maintainability note
 
 ## Prerequisites
-- [XAMPP](https://www.apachefriends.org/) with PHP 8.x, MySQL, Apache
-- [Composer](https://getcomposer.org/)
-- [Flutter SDK](https://flutter.dev/docs/get-started/install) (3.9+)
-- [Git](https://git-scm.com/)
 
-## Project Structure
-`
-internship_monitor/
-├── backend/        # Laravel API (XAMPP)
-├── frontend/       # Flutter Web
-└── docs/           # Documentation
-`
+- XAMPP with Apache and MySQL
+- PHP 8.1+ and Composer
+- Flutter 3.9+
 
-## 1. Backend Setup (Laravel + XAMPP)
+## Laravel API and MySQL
 
-### Step 1: Start XAMPP
-1. Open XAMPP Control Panel
-2. Start **Apache** and **MySQL**
+1. Start MySQL in the XAMPP control panel and create a database named `internship_monitor` using `utf8mb4_unicode_ci`.
+2. Configure `backend/.env` with:
 
-### Step 2: Create Database
-1. Open phpMyAdmin: http://localhost/phpmyadmin
-2. Create a new database named: internship_monitor
-3. Collation: utf8mb4_unicode_ci
+   ```dotenv
+   APP_ENV=local
+   APP_DEBUG=true
+   APP_URL=http://localhost:8000
 
-### Step 3: Configure Laravel
-`ash
-# Navigate to backend
-cd backend
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_DATABASE=internship_monitor
+   DB_USERNAME=root
+   DB_PASSWORD=
 
-# Install dependencies
-composer install
+   AUTOMATION_STALLED_AFTER_DAYS=14
+   CORS_ALLOWED_ORIGINS=http://localhost:5000,http://127.0.0.1:5000
+   ```
 
-# Copy environment file
-cp .env.example .env
+3. Install and initialize Laravel:
 
-# Generate application key
-php artisan key:generate
-`
+   ```powershell
+   cd backend
+   composer install
+   php artisan key:generate
+   php artisan migrate
+   ```
 
-### Step 4: Update .env
-Edit ackend/.env:
-`env
-APP_NAME="Internship Monitor"
-APP_ENV=local
-APP_KEY=
-APP_DEBUG=true
-APP_URL=http://localhost:8000
+4. Run the API on port 8000:
 
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_DATABASE=internship_monitor
-DB_USERNAME=root
-DB_PASSWORD=
-`
+   ```powershell
+   php artisan serve --host=127.0.0.1 --port=8000
+   ```
 
-### Step 5: Run Migrations
-`ash
-php artisan migrate
-`
+   Check `http://localhost:8000/api/health`. For Apache hosting instead, configure an Apache virtual host whose `DocumentRoot` points to `backend/public`, enable `mod_rewrite`, and set the matching `APP_URL` and `API_BASE_URL`.
 
-### Step 6: Start Laravel Server
-`ash
-php artisan serve --host=127.0.0.1 --port=8000
-`
+5. To run scheduled automation locally, use a second terminal:
 
-Backend will run at: http://localhost:8000
+   ```powershell
+   cd backend
+   php artisan schedule:work
+   ```
 
-Test API: http://localhost:8000/api/automation/reminders
+   The weekly summary is generated Monday at 01:00 for the previous full week. Stalled applications are checked daily at 08:00. You can also run either command manually:
 
-## 2. Frontend Setup (Flutter Web)
+   ```powershell
+   php artisan automation:generate-weekly-summary
+   php artisan automation:escalate-stalled-applications
+   ```
 
-### Step 1: Install Dependencies
-`ash
-# Navigate to frontend
+## Flutter Web
+
+```powershell
 cd frontend
-
-# Get packages
 flutter pub get
-`
+flutter run -d chrome --web-port=5000
+```
 
-### Step 2: Configure API URL
-Check rontend/lib/core/constants/api_constants.dart:
-`dart
-static const String baseUrl = 'http://localhost:8000/api';
-`
+The default API base URL is `http://localhost:8000/api`. Override it at build/run time with `--dart-define=API_BASE_URL=http://localhost:8000/api` when the backend origin differs. Keep `CORS_ALLOWED_ORIGINS` aligned with the actual frontend origin.
 
-Should already point to localhost:8000.
+## Validation
 
-### Step 3: Run on Chrome
-`ash
-flutter run -d chrome
-`
-
-Or build for web:
-`ash
-flutter build web
-# Serve from build/web/
-`
-
-## 3. Quick Start (Both Services)
-
-### Terminal 1 - Backend
-`ash
-cd backend
-php artisan serve --host=127.0.0.1 --port=8000
-`
-
-### Terminal 2 - Frontend
-`ash
+```powershell
 cd frontend
-flutter run -d chrome
-`
+flutter analyze
+flutter test
+```
 
-## Troubleshooting
+```powershell
+cd backend
+php artisan route:list --path=api
+php artisan schedule:list
+```
 
-### Backend Issues
-- **Migration fails**: Ensure MySQL is running and database exists
-- **Port 8000 in use**: Use php artisan serve --port=8001 and update Flutter API URL
-- **Composer errors**: Run composer update or check PHP version
-
-### Frontend Issues
-- **CORS errors**: Laravel should handle CORS for API routes. Check config/cors.php
-- **Connection refused**: Ensure backend is running on correct port
-- **Build errors**: Run lutter clean && flutter pub get
-
-### XAMPP Issues
-- **Apache/MySQL won't start**: Check port conflicts (80, 443, 3306)
-- **Access denied**: Default MySQL user is root with no password
-
-## Testing Week 13 Features
-
-1. Start both backend and frontend
-2. Navigate to Automation Dashboard in Flutter app
-3. Test all four sections:
-   - Milestone Reminders
-   - Incomplete Record Alerts
-   - Stalled Application Escalations
-   - Weekly Placement Summary
-4. Test retry logic by stopping backend briefly
-
-## API Endpoints
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| /api/automation/reminders | GET | Milestone reminders |
-| /api/automation/incomplete-records | GET | Incomplete record alerts |
-| /api/automation/escalations | GET | Stalled escalations |
-| /api/automation/weekly-summary | GET | Weekly placement summary |
+The Week 13 API is unauthenticated and intended only for local development with synthetic records. Do not expose it publicly or use real student data until authentication and role-based authorization are implemented.

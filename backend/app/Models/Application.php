@@ -26,6 +26,9 @@ class Application extends Model
         'verified_at',
         'endorsed_at',
         'partner_submitted_at',
+        'interview_scheduled_at',
+        'offer_received_at',
+        'rejected_at',
         'confirmed_at',
     ];
 
@@ -36,6 +39,9 @@ class Application extends Model
         'verified_at' => 'datetime',
         'endorsed_at' => 'datetime',
         'partner_submitted_at' => 'datetime',
+        'interview_scheduled_at' => 'datetime',
+        'offer_received_at' => 'datetime',
+        'rejected_at' => 'datetime',
         'confirmed_at' => 'datetime',
     ];
 
