@@ -96,10 +96,9 @@ class DashboardProvider extends ChangeNotifier {
           ? DataLoadingState.businessFailure
           : DataLoadingState.error;
       _remindersError = error.message;
-    } on FormatException catch (error) {
+    } on FormatException {
       _remindersState = DataLoadingState.error;
-      _remindersError =
-          'The server returned invalid reminder data: ${error.message}';
+      _remindersError = 'Reminder data could not be loaded.';
     }
     notifyListeners();
   }
@@ -120,10 +119,9 @@ class DashboardProvider extends ChangeNotifier {
           ? DataLoadingState.businessFailure
           : DataLoadingState.error;
       _applicationsError = error.message;
-    } on FormatException catch (error) {
+    } on FormatException {
       _applicationsState = DataLoadingState.error;
-      _applicationsError =
-          'The server returned invalid application data: ${error.message}';
+      _applicationsError = 'Application data could not be loaded.';
     }
     notifyListeners();
   }
@@ -211,10 +209,9 @@ class DashboardProvider extends ChangeNotifier {
           ? DataLoadingState.businessFailure
           : DataLoadingState.error;
       _incompleteRecordsError = error.message;
-    } on FormatException catch (error) {
+    } on FormatException {
       _incompleteRecordsState = DataLoadingState.error;
-      _incompleteRecordsError =
-          'The server returned invalid record data: ${error.message}';
+      _incompleteRecordsError = 'Record data could not be loaded.';
     }
     notifyListeners();
   }
@@ -236,10 +233,9 @@ class DashboardProvider extends ChangeNotifier {
           ? DataLoadingState.businessFailure
           : DataLoadingState.error;
       _escalationsError = error.message;
-    } on FormatException catch (error) {
+    } on FormatException {
       _escalationsState = DataLoadingState.error;
-      _escalationsError =
-          'The server returned invalid escalation data: ${error.message}';
+      _escalationsError = 'Escalation data could not be loaded.';
     }
     notifyListeners();
   }
@@ -261,10 +257,9 @@ class DashboardProvider extends ChangeNotifier {
           ? DataLoadingState.businessFailure
           : DataLoadingState.error;
       _weeklySummariesError = error.message;
-    } on FormatException catch (error) {
+    } on FormatException {
       _weeklySummariesState = DataLoadingState.error;
-      _weeklySummariesError =
-          'The server returned invalid summary data: ${error.message}';
+      _weeklySummariesError = 'Summary data could not be loaded.';
     }
     notifyListeners();
   }
@@ -272,11 +267,5 @@ class DashboardProvider extends ChangeNotifier {
   // Retry all failed requests
   Future<void> retryAll() async {
     await fetchAllData();
-  }
-
-  @override
-  void dispose() {
-    _apiService.dispose();
-    super.dispose();
   }
 }

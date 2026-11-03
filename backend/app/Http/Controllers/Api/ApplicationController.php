@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Application;
 use App\Models\IncompleteRecord;
 use App\Models\Milestone;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -23,30 +24,43 @@ class ApplicationController extends Controller
         'placement_confirmation',
     ];
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $applications = Application::with('student:id,name,student_id')
+        $user = $request->user();
+        $canIdentifyStudent = in_array($user->role, ['coordinator', 'adviser'], true);
+
+        $applications = Application::visibleTo($user)
+            ->when($canIdentifyStudent, fn ($query) => $query->with('student:id,name,student_id'))
             ->latest('updated_at')
             ->limit(100)
             ->get()
-            ->map(fn (Application $application): array => [
-                'id' => $application->id,
-                'application_number' => $application->application_number,
-                'student_name' => $application->student->name,
-                'student_id' => $application->student->student_id,
-                'company_name' => $application->company_name,
-                'position' => $application->position,
-                'stage' => $application->status,
-                'workflow_state' => $application->workflow_state,
-                'interview_status' => $application->interview_status,
-                'updated_at' => $application->updated_at?->toIso8601String(),
-            ]);
+            ->map(function (Application $application) use ($canIdentifyStudent): array {
+                $data = [
+                    'id' => $application->id,
+                    'application_number' => $application->application_number,
+                    'company_name' => $application->company_name,
+                    'position' => $application->position,
+                    'stage' => $application->status,
+                    'workflow_state' => $application->workflow_state,
+                    'interview_status' => $application->interview_status,
+                    'updated_at' => $application->updated_at?->toIso8601String(),
+                ];
+
+                if ($canIdentifyStudent) {
+                    $data['student_name'] = $application->student->name;
+                    $data['student_id'] = $application->student->student_id;
+                }
+
+                return $data;
+            });
 
         return response()->json($applications);
     }
 
-    public function updateWorkflow(Request $request, Application $application): JsonResponse
+    public function updateWorkflow(Request $request, int $application): JsonResponse
     {
+        $this->ensureOnlyInputKeys($request, ['stage', 'interview_status']);
+        $application = $this->findVisibleApplication($request, $application);
         $validated = $request->validate([
             'stage' => ['required', 'string', Rule::in(self::STAGES)],
             'interview_status' => [
@@ -56,6 +70,15 @@ class ApplicationController extends Controller
             ],
         ]);
 
+        if (isset($validated['interview_status']) &&
+            ($validated['stage'] !== 'interview' || $application->status !== 'interview')) {
+            throw ValidationException::withMessages([
+                'interview_status' => ['Interview outcomes can only be updated after the application reaches the interview stage.'],
+            ]);
+        }
+
+        $this->authorizeWorkflowUpdate($request, $application, $validated);
+
         $currentIndex = array_search($application->status, self::STAGES, true);
         $targetIndex = array_search($validated['stage'], self::STAGES, true);
         $isInterviewUpdate = $application->status === 'interview'
@@ -63,7 +86,7 @@ class ApplicationController extends Controller
             && array_key_exists('interview_status', $validated);
 
         if ($currentIndex === false || $targetIndex === false
-            || (!$isInterviewUpdate && $targetIndex !== $currentIndex + 1)) {
+            || (! $isInterviewUpdate && $targetIndex !== $currentIndex + 1)) {
             $this->rejectWorkflowTransition(
                 $application,
                 $validated['stage'],
@@ -165,9 +188,14 @@ class ApplicationController extends Controller
         throw ValidationException::withMessages(['stage' => [$message]]);
     }
 
-    public function completeMilestone(Milestone $milestone): JsonResponse
+    public function completeMilestone(Request $request, int $milestone): JsonResponse
     {
-        if (!$milestone->is_completed) {
+        $this->ensureOnlyInputKeys($request, []);
+        $milestone = Milestone::query()
+            ->whereHas('application', fn ($query) => $query->visibleTo($request->user()))
+            ->findOrFail($milestone);
+
+        if (! $milestone->is_completed) {
             $milestone->is_completed = true;
             $milestone->completed_at = now();
             $milestone->save();
@@ -183,9 +211,17 @@ class ApplicationController extends Controller
         ]);
     }
 
-    public function resolveIncompleteRecord(IncompleteRecord $record): JsonResponse
+    public function resolveIncompleteRecord(Request $request, int $record): JsonResponse
     {
-        if (!$record->resolved) {
+        $this->ensureOnlyInputKeys($request, []);
+        $record = IncompleteRecord::query()
+            ->whereHas('application', function ($query) use ($request): void {
+                $query->visibleTo($request->user())
+                    ->whereColumn('applications.student_id', 'incomplete_records.student_id');
+            })
+            ->findOrFail($record);
+
+        if (! $record->resolved) {
             $record->resolved = true;
             $record->resolved_at = now();
             $record->save();
@@ -199,5 +235,37 @@ class ApplicationController extends Controller
             ],
             'message' => 'Incomplete record resolved.',
         ]);
+    }
+
+    private function findVisibleApplication(Request $request, int $id): Application
+    {
+        return Application::visibleTo($request->user())->findOrFail($id);
+    }
+
+    private function authorizeWorkflowUpdate(
+        Request $request,
+        Application $application,
+        array $validated,
+    ): void {
+        $role = $request->user()->role;
+
+        $allowed = match ($role) {
+            'coordinator' => true,
+            'adviser' => $application->status === 'verification'
+                && $validated['stage'] === 'endorsement',
+            'partner_reviewer' => (
+                $application->status === 'partner_submission'
+                && $validated['stage'] === 'interview'
+            ) || (
+                $application->status === 'interview'
+                && $validated['stage'] === 'interview'
+                && array_key_exists('interview_status', $validated)
+            ),
+            default => false,
+        };
+
+        if (! $allowed) {
+            throw new AuthorizationException('You do not have permission to perform this action.');
+        }
     }
 }

@@ -1,10 +1,27 @@
 # Week 13 API contract
 
-Base URL for local development: `http://localhost:8000/api`
+Base URL for local development: `http://127.0.0.1:8000/api`
 
 All responses use JSON. List endpoints return a JSON array, including when there are no records (`[]`). IDs are integers. Dates use `YYYY-MM-DD`; timestamps use ISO 8601.
 
-## Automation and workflow endpoints
+## Authentication and role access
+
+Except for `/health` and `/login`, requests require an `Authorization: Bearer <token>` header from a successful login. Tokens expire after eight hours and are revoked by logout.
+
+Database role values are `student`, `coordinator`, `adviser`, and `partner_reviewer`.
+
+| Role | Access |
+|---|---|
+| Student | Read own application records only |
+| Internship Coordinator (`coordinator`) | Read all applications; use all automation endpoints; update workflows, milestones, and incomplete records |
+| Adviser (`adviser`) | Read assigned applications and related automation; advance assigned applications from verification to endorsement; resolve assigned requirements |
+| Partner Reviewer (`partner_reviewer`) | Read assigned applications; advance partner submission to interview and update interview outcomes |
+
+Application, milestone, and incomplete-record actions are scoped to assigned records. Out-of-scope record IDs return 404. Forbidden role actions return 403. Student names and IDs are omitted from student and partner-reviewer application responses.
+
+All API responses are JSON. List endpoints return arrays, including empty arrays. IDs are integers; dates use `YYYY-MM-DD`; timestamps use ISO 8601.
+
+## Protected automation and workflow endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -142,8 +159,10 @@ The workflow update returns:
 | Status | Meaning | Client behavior |
 |---|---|---|
 | 200 | Request completed; empty lists are valid | Render returned data |
-| 404 | Application, milestone, or record does not exist | Show a permanent record/access failure |
-| 422 | Invalid payload or workflow/business rule violation | Do not retry; direct the user to coordinator review |
+| 400 / 422 | Invalid payload or workflow/business rule violation | Do not retry; show generic input feedback |
+| 401 | Missing, invalid, expired, or revoked token / invalid credentials | Show generic sign-in feedback; clear expired session |
+| 403 | Authenticated role is not permitted | Show a generic permission message |
+| 404 | Application, milestone, or record does not exist or is out of scope | Show a permanent record/access failure |
 | 429 | Rate limit reached | Retry with bounded backoff |
 | 500-599 | Temporary server failure | Retry with bounded backoff, then offer manual retry |
 
@@ -160,4 +179,4 @@ Laravel validation errors use:
 }
 ```
 
-All API routes are currently intended for a local Week 13 development environment and are not authenticated. Do not expose this API or real student data outside that environment until authentication and role-based authorization are added.
+API routes (except health and login) require Sanctum bearer authentication. Do not send real student data over plain HTTP outside local development; production must use HTTPS and a narrowly configured CORS origin allowlist.

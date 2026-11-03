@@ -4,12 +4,15 @@ import 'package:provider/provider.dart';
 import '../../core/constants/ui_constants.dart';
 import '../../models/application_model.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../widgets/sign_out_button.dart';
 import '../../widgets/ui/clean_card.dart';
 import '../../widgets/ui/state_widgets.dart' as ui;
 import '../../widgets/ui/workflow_step_indicator.dart';
 
 class WorkflowOverviewScreen extends StatefulWidget {
-  const WorkflowOverviewScreen({super.key});
+  const WorkflowOverviewScreen({super.key, this.role = 'coordinator'});
+
+  final String role;
 
   @override
   State<WorkflowOverviewScreen> createState() => _WorkflowOverviewScreenState();
@@ -51,6 +54,7 @@ class _WorkflowOverviewScreenState extends State<WorkflowOverviewScreen> {
             onPressed: () =>
                 context.read<DashboardProvider>().fetchApplications(),
           ),
+          const SignOutButton(),
           const SizedBox(width: UIConstants.spacingSM),
         ],
       ),
@@ -167,6 +171,7 @@ class _WorkflowOverviewScreenState extends State<WorkflowOverviewScreen> {
                         ),
                         child: _ApplicationCard(
                           application: application,
+                          role: widget.role,
                           isUpdating: provider.isUpdatingWorkflow,
                           onAdvance: (stage) => provider.updateWorkflow(
                             application.id,
@@ -194,12 +199,14 @@ class _WorkflowOverviewScreenState extends State<WorkflowOverviewScreen> {
 class _ApplicationCard extends StatelessWidget {
   const _ApplicationCard({
     required this.application,
+    required this.role,
     required this.isUpdating,
     required this.onAdvance,
     required this.onInterviewStatusChanged,
   });
 
   final ApplicationModel application;
+  final String role;
   final bool isUpdating;
   final Future<bool> Function(String stage) onAdvance;
   final Future<bool> Function(String status) onInterviewStatusChanged;
@@ -221,6 +228,16 @@ class _ApplicationCard extends StatelessWidget {
         : null;
     final company = application.companyName;
     final position = application.position;
+    final canManageInterview =
+        role == 'coordinator' || role == 'partner_reviewer';
+    final canAdvance =
+        role == 'coordinator' ||
+        (role == 'adviser' &&
+            application.stage == 'verification' &&
+            nextStage == 'endorsement') ||
+        (role == 'partner_reviewer' &&
+            application.stage == 'partner_submission' &&
+            nextStage == 'interview');
 
     return CleanCard(
       child: Column(
@@ -234,7 +251,8 @@ class _ApplicationCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      application.studentName,
+                      application.studentName ??
+                          'Application ${application.applicationNumber}',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: UIConstants.spacingXS),
@@ -260,7 +278,7 @@ class _ApplicationCard extends StatelessWidget {
             backgroundColor: UIConstants.surfaceVariant,
             color: UIConstants.primary,
           ),
-          if (application.stage == 'interview') ...[
+          if (application.stage == 'interview' && canManageInterview) ...[
             const SizedBox(height: UIConstants.spacingMD),
             DropdownButtonFormField<String>(
               initialValue: application.interviewStatus,
@@ -287,7 +305,9 @@ class _ApplicationCard extends StatelessWidget {
                     },
             ),
           ],
-          if (nextStage != null && application.workflowState != 'rejected') ...[
+          if (canAdvance &&
+              nextStage != null &&
+              application.workflowState != 'rejected') ...[
             const SizedBox(height: UIConstants.spacingMD),
             Align(
               alignment: Alignment.centerRight,

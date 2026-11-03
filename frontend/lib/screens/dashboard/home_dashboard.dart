@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/ui_constants.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../widgets/sign_out_button.dart';
 import '../../widgets/ui/clean_card.dart';
 import '../alerts/incomplete_records_screen.dart';
 import '../escalations/escalations_screen.dart';
@@ -11,7 +12,9 @@ import '../summaries/weekly_summary_screen.dart';
 import '../workflow/workflow_overview_screen.dart';
 
 class HomeDashboard extends StatefulWidget {
-  const HomeDashboard({super.key});
+  const HomeDashboard({super.key, required this.role});
+
+  final String role;
 
   @override
   State<HomeDashboard> createState() => _HomeDashboardState();
@@ -40,6 +43,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
             icon: const Icon(Icons.refresh),
             onPressed: () => context.read<DashboardProvider>().fetchAllData(),
           ),
+          const SignOutButton(),
           const SizedBox(width: UIConstants.spacingSM),
         ],
       ),
@@ -67,7 +71,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
                     ),
                     const SizedBox(height: UIConstants.spacingSM),
                     Text(
-                      'Keep every application moving from submission through placement.',
+                      widget.role == 'adviser'
+                          ? 'Review applications assigned to you and keep each placement moving.'
+                          : 'Keep every application moving from submission through placement.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: UIConstants.textSecondary,
                       ),
@@ -167,7 +173,7 @@ class _HomeDashboardState extends State<HomeDashboard> {
                               icon: Icons.account_tree_outlined,
                               onTap: () => _open(
                                 context,
-                                const WorkflowOverviewScreen(),
+                                WorkflowOverviewScreen(role: widget.role),
                               ),
                             ),
                             _NavigationCard(

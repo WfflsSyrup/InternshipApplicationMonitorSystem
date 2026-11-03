@@ -6,5 +6,6 @@ class AutomationDashboard extends StatelessWidget {
   const AutomationDashboard({super.key});
 
   @override
-  Widget build(BuildContext context) => const HomeDashboard();
+  Widget build(BuildContext context) =>
+      const HomeDashboard(role: 'coordinator');
 }

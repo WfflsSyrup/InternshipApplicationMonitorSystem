@@ -4,7 +4,7 @@ A local-development full-stack foundation for tracking internship applications f
 
 The project is split into a Flutter Web client and a Laravel API backed by MySQL. The API owns workflow validation and scheduled automation; the Flutter client presents workflow and coordinator-focused automation views with explicit loading, empty, network-error, and business-rule states.
 
-> **Development and security notice:** The Week 13 API is currently unauthenticated. Run it only on a trusted local development machine with synthetic data. Do not expose it publicly or use real student records until authentication, role-based authorization, and production security controls have been implemented.
+> **Development and security notice:** API routes require Sanctum bearer authentication and role-based authorization. Local development may use HTTP only with synthetic data. Do not expose the API or enter real student records outside a trusted deployment; production requires HTTPS, a narrowly configured CORS allowlist, protected database backups, and the additional controls in [residual risk](docs/WEEK14_RESIDUAL_RISK.md).
 
 ## Contents
 
@@ -30,10 +30,14 @@ The project is split into a Flutter Web client and a Laravel API backed by MySQL
 - Explicit loading, populated, empty, transient network-error, and permanent business-rule failure states.
 - API service with bounded retries for transient GET failures. Permanent client/business errors are surfaced without retry; state-changing PATCH requests are not retried.
 - Provider-based dashboard state management.
+- Minimal login screen with role-directed routes. Bearer credentials remain in memory and require a new sign-in after a browser reload.
+- Client-side input validation and generic status-specific error feedback; raw backend error payloads are not shown.
 
 ### Laravel API and MySQL
 
 - JSON API for reading application and automation data.
+- Sanctum bearer login/logout with eight-hour token expiration and four database roles: student, coordinator, adviser, and partner reviewer.
+- Route-level role checks and per-assignment application scoping; student and partner application responses omit student identity fields.
 - Server-side validation of workflow transitions and interview outcomes.
 - Migration-defined application, milestone, incomplete-record, escalation, and weekly-summary data.
 - Scheduled escalation and weekly-summary generation.
@@ -82,7 +86,7 @@ Flutter is a client, not a trusted enforcement boundary. Laravel validates input
 - Flutter/Dart SDK satisfying the frontend constraint (`^3.9.0`).
 - A modern browser such as Chrome or Edge.
 
-The backend uses Laravel 10, MySQL, and Laravel Sanctum as a declared dependency. Sanctum authentication is **not currently applied to these API routes**.
+The backend uses Laravel 10, MySQL, and Laravel Sanctum. Protected API routes require bearer authentication; see the [API contract](docs/week13/API_CONTRACT.md) for role boundaries.
 
 ## Local setup
 
@@ -109,21 +113,21 @@ Edit `backend/.env` and set at least:
 
 ```dotenv
 APP_ENV=local
-APP_DEBUG=true
-APP_URL=http://localhost:8000
+APP_DEBUG=false
+APP_URL=http://127.0.0.1:8000
 
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=internship_monitor
-DB_USERNAME=root
-DB_PASSWORD=
+DB_USERNAME=internship_app
+DB_PASSWORD=replace-with-a-long-random-secret
 
 AUTOMATION_STALLED_AFTER_DAYS=14
 CORS_ALLOWED_ORIGINS=http://localhost:5000,http://127.0.0.1:5000
 ```
 
-Use the database credentials configured for your XAMPP installation. Then install dependencies, create the application key, and run migrations:
+Create a dedicated MySQL account with access only to the `internship_monitor` schema; do not use the MySQL root account for the app. Keep the `.env` file private and out of version control. Then install dependencies, create the application key, and run migrations:
 
 ```powershell
 composer install
@@ -144,6 +148,8 @@ Invoke-RestMethod http://localhost:8000/api/health
 ```
 
 The expected response is `{"status":"ok"}`. Keep the API process running in this terminal.
+
+Create user accounts through a trusted administrative process. Set `role` to one of `student`, `coordinator`, `adviser`, or `partner_reviewer`; never accept role selection from the public login form.
 
 ### 3. Run the Flutter Web client
 
@@ -190,21 +196,23 @@ Do not commit `.env` files, credentials, or production secrets.
 
 ## API overview
 
-Local base URL: `http://localhost:8000/api`
+Local base URL: `http://127.0.0.1:8000/api`
 
-All endpoints return JSON. List endpoints return arrays, including `[]` when there are no results.
+All endpoints return JSON. Except for `/health` and `/login`, requests require a bearer token in the `Authorization` header. List endpoints return arrays, including `[]` when there are no results.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/health` | API health check. |
-| `GET` | `/applications` | List up to 100 recently updated applications. |
-| `PATCH` | `/applications/{id}/workflow` | Advance one workflow stage or update interview status. |
-| `GET` | `/automation/reminders` | List incomplete milestones due within 14 days or overdue. |
-| `GET` | `/automation/incomplete-records` | List unresolved incomplete-record alerts. |
-| `GET` | `/automation/escalations` | List open or in-progress stalled-application escalations. |
-| `GET` | `/automation/weekly-summary` | List up to four recent weekly summaries. |
-| `PATCH` | `/milestones/{id}/complete` | Mark a requirement milestone complete. |
-| `PATCH` | `/incomplete-records/{id}/resolve` | Resolve an incomplete-record alert. |
+| `POST` | `/login` | Authenticate credentials and issue an eight-hour bearer token. |
+| `POST` | `/logout` | Revoke the current bearer token. |
+| `GET` | `/applications` | List up to 100 applications visible to the authenticated role and assignments. |
+| `PATCH` | `/applications/{id}/workflow` | Advance an authorized workflow stage or update an interview outcome. |
+| `GET` | `/automation/reminders` | Coordinator/adviser: assigned incomplete milestones due within 14 days or overdue. |
+| `GET` | `/automation/incomplete-records` | Coordinator/adviser: assigned unresolved incomplete-record alerts. |
+| `GET` | `/automation/escalations` | Coordinator/adviser: assigned open or in-progress stalled-application escalations. |
+| `GET` | `/automation/weekly-summary` | Coordinator/adviser: up to four recent aggregate summaries. |
+| `PATCH` | `/milestones/{id}/complete` | Coordinator/adviser: complete an assigned requirement milestone. |
+| `PATCH` | `/incomplete-records/{id}/resolve` | Coordinator/adviser: resolve an assigned incomplete-record alert. |
 
 Example workflow transition:
 
@@ -233,8 +241,10 @@ Common response codes:
 | Status | Meaning |
 |---|---|
 | `200` | Request succeeded. Empty list responses are valid. |
-| `404` | The requested application, milestone, or record was not found. |
-| `422` | Payload validation or workflow/business rule failed; do not retry automatically. |
+| `400` / `422` | Payload validation or workflow/business rule failed; do not retry automatically. |
+| `401` | Missing, invalid, expired, or revoked token. |
+| `403` | Authenticated role is not permitted to perform the action. |
+| `404` | The requested application, milestone, or record was not found or is outside the user's scope. |
 | `429` | Rate limit reached; the client may retry eligible GET requests with bounded backoff. |
 | `5xx` | Server error; the client may retry eligible GET requests with bounded backoff. |
 
@@ -263,12 +273,20 @@ php artisan schedule:list
 
 ## Validation and tests
 
-Run the Flutter static analyzer and tests:
+Run the Flutter static analyzer and tests (the analyzer command permits existing non-fatal deprecation notices):
 
 ```powershell
 cd frontend
-flutter analyze
+flutter analyze --no-fatal-infos
 flutter test
+```
+
+Run adverse-request tests against isolated in-memory SQLite (no XAMPP service required):
+
+```powershell
+cd backend
+composer dump-autoload
+php vendor\bin\phpunit
 ```
 
 Inspect Laravel API routes and scheduled tasks:
@@ -285,7 +303,7 @@ After running the migrations, review database migration state:
 php artisan migrate:status
 ```
 
-The Flutter tests cover transient GET retry recovery, no retry for permanent HTTP errors, and the dashboard/workflow UI. MySQL-backed endpoint integration should be verified against a locally configured database.
+The tests cover invalid/altered/expired credentials, forbidden roles, assignment scoping, minimized response data, generic frontend error handling, and role-based routing. MySQL migrations and XAMPP-specific configuration should still be verified against a locally configured database.
 
 ## Project structure
 
@@ -310,8 +328,8 @@ internship_monitor/
 
 ## Known limitations and production readiness
 
-- **Authentication and authorization are not enabled.** Sanctum is present as a dependency, but the current API routes are unauthenticated. Add authentication, role-based permissions, and authorization tests before exposing the service or entering real student data.
-- **Use synthetic records locally.** Keep the application bound to a trusted development environment until security controls are implemented.
+- **Account lifecycle remains operational.** Trusted account provisioning, password reset, MFA, user disablement, and security audit monitoring are not implemented.
+- **Use synthetic records locally.** Local HTTP is not encrypted. Use HTTPS before carrying credentials or student records outside a trusted development environment.
 - **Initial workflow data is not provided through an intake UI/API.** Applications, milestones, and incomplete-record alerts need to be created or loaded through an upstream or manual process.
 - **No external notifications are sent.** Reminders and escalations are represented in persisted records and surfaced through the UI; email, SMS, and ticketing integrations are out of scope.
 - **Scheduler availability matters.** Scheduled jobs do not run unless Laravel's scheduler is active or invoked by the host.
@@ -324,3 +342,6 @@ internship_monitor/
 - [Workflow boundary map](docs/week13/WORKFLOW_BOUNDARY_MAP.md) — trust boundaries, system ownership, and external dependencies.
 - [Structured log examples](docs/week13/STRUCTURED_LOGS.md) — representative transient recovery and human-review failure events.
 - [Maintainability note](docs/week13/MAINTAINABILITY_NOTE.md) — design seams, operational considerations, and follow-up improvements.
+- [Cryptography justification](docs/WEEK14_CRYPTOGRAPHY.md) — password hashing, token digests, and protection objectives.
+- [Adverse-request evidence](docs/WEEK14_ADVERSE_TESTS.md) — security test scenarios and latest results.
+- [Residual risk summary](docs/WEEK14_RESIDUAL_RISK.md) — covered threats and remaining deployment risks.

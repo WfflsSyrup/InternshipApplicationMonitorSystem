@@ -3,19 +3,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Milestone;
-use App\Models\IncompleteRecord;
 use App\Models\Escalation;
+use App\Models\IncompleteRecord;
+use App\Models\Milestone;
 use App\Models\WeeklySummary;
-use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class AutomationController extends Controller
 {
-    public function getReminders(): JsonResponse
+    public function getReminders(Request $request): JsonResponse
     {
-        $reminders = Milestone::with(['application.student:id,name,student_id'])
+        $reminders = Milestone::with([
+            'application:id,student_id',
+            'application.student:id,name,student_id',
+        ])
             ->where('is_completed', false)
+            ->whereHas(
+                'application',
+                fn ($query) => $query->visibleTo($request->user()),
+            )
             ->whereDate('due_date', '<=', Carbon::today()->addDays(14))
             ->orderBy('due_date')
             ->orderByDesc('priority')
@@ -26,7 +34,7 @@ class AutomationController extends Controller
                 'student_name' => $milestone->application->student->name,
                 'student_id' => $milestone->application->student->student_id,
                 'reminder_type' => $milestone->type,
-                'message' => $milestone->title . ': ' . $milestone->description,
+                'message' => $milestone->title.': '.$milestone->description,
                 'due_date' => $milestone->due_date->format('Y-m-d'),
                 'is_completed' => $milestone->is_completed,
                 'priority' => $milestone->priority,
@@ -35,10 +43,14 @@ class AutomationController extends Controller
         return response()->json($reminders);
     }
 
-    public function getIncompleteRecords(): JsonResponse
+    public function getIncompleteRecords(Request $request): JsonResponse
     {
         $records = IncompleteRecord::with(['student:id,name,student_id'])
             ->where('resolved', false)
+            ->whereHas('application', function ($query) use ($request): void {
+                $query->visibleTo($request->user())
+                    ->whereColumn('applications.student_id', 'incomplete_records.student_id');
+            })
             ->orderByRaw("FIELD(severity, 'critical', 'high', 'medium', 'low')")
             ->orderByDesc('created_at')
             ->limit(100)
@@ -57,13 +69,17 @@ class AutomationController extends Controller
         return response()->json($records);
     }
 
-    public function getEscalations(): JsonResponse
+    public function getEscalations(Request $request): JsonResponse
     {
         $escalations = Escalation::with([
             'student:id,name,student_id',
             'assignee:id,name',
-            'application:id,updated_at',
+            'application:id,student_id,updated_at',
         ])
+            ->whereHas('application', function ($query) use ($request): void {
+                $query->visibleTo($request->user())
+                    ->whereColumn('applications.student_id', 'escalations.student_id');
+            })
             ->whereIn('status', ['open', 'in_progress'])
             ->orderByRaw("FIELD(escalation_level, 'critical', 'high', 'medium', 'low')")
             ->orderByDesc('escalated_at')

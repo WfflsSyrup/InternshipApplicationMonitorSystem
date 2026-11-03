@@ -2,12 +2,24 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Application extends Model
 {
     use HasFactory;
+
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        return match ($user->role) {
+            'coordinator' => $query,
+            'adviser' => $query->where('adviser_id', $user->id),
+            'partner_reviewer' => $query->where('partner_id', $user->id),
+            'student' => $query->where('student_id', $user->id),
+            default => $query->whereRaw('1 = 0'),
+        };
+    }
 
     protected $fillable = [
         'student_id',

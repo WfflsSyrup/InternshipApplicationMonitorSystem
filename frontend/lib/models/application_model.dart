@@ -2,7 +2,7 @@ class ApplicationModel {
   const ApplicationModel({
     required this.id,
     required this.applicationNumber,
-    required this.studentName,
+    this.studentName,
     required this.studentId,
     required this.companyName,
     required this.position,
@@ -13,7 +13,7 @@ class ApplicationModel {
 
   final String id;
   final String applicationNumber;
-  final String studentName;
+  final String? studentName;
   final String? studentId;
   final String? companyName;
   final String? position;
@@ -25,7 +25,7 @@ class ApplicationModel {
     return ApplicationModel(
       id: json['id'].toString(),
       applicationNumber: json['application_number'] as String,
-      studentName: json['student_name'] as String,
+      studentName: json['student_name'] as String?,
       studentId: json['student_id'] as String?,
       companyName: json['company_name'] as String?,
       position: json['position'] as String?,

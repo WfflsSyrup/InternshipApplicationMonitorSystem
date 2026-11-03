@@ -56,4 +56,78 @@ void main() {
     );
     expect(requests, 1);
   });
+
+  test(
+    'maps authorization and validation failures to fixed messages',
+    () async {
+      for (final entry in {
+        400: 'Check the information and try again.',
+        401: 'Your session has expired. Please sign in again.',
+        403: 'You do not have permission to perform this action.',
+        422: 'Check the information and try again.',
+      }.entries) {
+        final service = ApiService(
+          client: MockClient(
+            (_) async => http.Response(
+              '{"message":"database exception: private detail"}',
+              entry.key,
+            ),
+          ),
+        );
+        addTearDown(service.dispose);
+
+        await expectLater(
+          service.getReminders(),
+          throwsA(
+            isA<ApiException>().having(
+              (error) => error.message,
+              'safe user message',
+              entry.value,
+            ),
+          ),
+        );
+      }
+    },
+  );
+
+  test(
+    'clears the token and expires the session on unauthorized response',
+    () async {
+      var sessionExpired = false;
+      final service = ApiService(
+        client: MockClient((_) async => http.Response('{}', 401)),
+      );
+      service
+        ..setAccessToken('active-token')
+        ..onUnauthorized = () => sessionExpired = true;
+      addTearDown(service.dispose);
+
+      await expectLater(service.getReminders(), throwsA(isA<ApiException>()));
+
+      expect(sessionExpired, isTrue);
+    },
+  );
+
+  test('rejects invalid workflow input before sending a request', () async {
+    var requests = 0;
+    final service = ApiService(
+      client: MockClient((_) async {
+        requests++;
+        return http.Response('{}', 200);
+      }),
+    );
+    addTearDown(service.dispose);
+
+    await expectLater(
+      service.updateWorkflow('not-an-id', stage: 'unrecognized'),
+      throwsA(
+        isA<ApiException>().having(
+          (error) => error.statusCode,
+          'status code',
+          400,
+        ),
+      ),
+    );
+    expect(requests, 0);
+  });
 }
